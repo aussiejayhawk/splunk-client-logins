@@ -1,0 +1,115 @@
+<form version="1.4" theme="light">
+  <label>Client Account Login History</label>
+  <fieldset submitButton="false"></fieldset>
+  <row>
+    <panel>
+      <input type="text" token="email" searchWhenChanged="true">
+        <label>Client Email</label>
+        <default>default_value</default>
+      </input>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Last Machine Logged Into</title>
+      <table>
+        <search>
+          <query>
+            index=INDEX1 UserPrincipalName="$email$" source="SOURCE1" 
+            | table ComputerName Model Manufacturer DnsIP ModelSupport SerialNumber EnabledInAD LastLogonDate os_CaptionSimple os_LastBootupTime 
+            | eval LastBootupTime=strftime(os_LastBootupTime, "%Y-%m-%d %H:%M:%S") 
+            | sort -_time 
+            | head 1 
+            | transpose
+          </query>
+          <earliest>-30d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>PC Logins</title>
+      <table>
+        <search>
+          <query>
+            index=INDEX2 user_id="$email$" appDisplayName="Windows Sign In" 
+            | rename signinDateTime AS Time deviceDetail.displayName AS "PC Barcode" authenticationDetails{}.succeeded AS Successful ipAddress AS "IP Address" 
+            | table _time "PC Barcode" Successful "IP Address" 
+            | sort - _time
+          </query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Global Protect Logins</title>
+      <table>
+        <search>
+          <query>
+            index=INDEX3 user_id="$email$" sourcetype="SOURCE2" appDisplayName="Company VPN" 
+            | rename signinDateTime AS Time deviceDetail.displayName AS "PC Barcode" action AS Result 
+            | table _time "PC Barcode" Result authenticationRequirement reason 
+            | head 20
+          </query>
+          <earliest>-30d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Account Locks and Password Resets</title>
+      <table>
+        <title>AD Activity</title>
+        <search>
+          <query>
+            index=INDEX4 source=SOURCE3 [search index=INDEX5 search_name="All User Logins - Hourly" EmailAddress="$email$" | head 1 | Return Username]
+            earliest=-1y@y latest=now
+            (EventId=4740 OR EventId=4767 OR EventId=4724) 
+            | eval Action=case(EventId==4740, "Account Locked", 
+                               EventId==4767, "Account Unlocked", 
+                               EventId==4724, "Password Reset") 
+            | table _time Action 
+            | sort - _time
+          </query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+      <table>
+        <title>Self Service Password Resets</title>
+        <search>
+          <query>loggedByService="Self-service Password Management" index=INDEX6 "$email$" 
+            | table _time result resultReason 
+            | sort - _time</query>
+          <earliest>-1y@y</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Intune Devices enrolled to Client</title>
+      <table>
+        <search>
+          <query>index=INDEX7 source="SOURCE4" [search index=INDEX8 search_name="All User Logins - Hourly" EmailAddress="$email$" | head 1 | Return Username] | dedup id | table Model serialNumber imei operatingSystem deviceCategoryDisplayName managementState deviceRegistrationState enrolledDateTime deviceType lastSyncDateTime</query>
+          <earliest>-1y@y</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
